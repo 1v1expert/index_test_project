@@ -49,7 +49,6 @@ class TodoChart(RequestHandler):
     # def initialize(self, database):
     #     self.database = database
     def get(self, id):
-        print(self.request.arguments.get('tag'), type(self.request.arguments.get('tag')))
         params = {}
         if 'tag' in self.request.arguments.keys():
             params = {'tag': self.request.arguments.get('tag')[0].decode('utf8')}
