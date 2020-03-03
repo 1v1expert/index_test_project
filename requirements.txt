@@ -1,0 +1,2 @@
+psycopg2-binary==2.8.4
+tornado==6.0.3
