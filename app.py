@@ -26,22 +26,21 @@ class ChartsClient(object):
                                         password=DB_PASSWORD, host=DB_HOST)
         # raise connect == None
         
-    def get_charts(self, **kwargs) -> list():
-        tag, id = kwargs.get('tag'), kwargs.get('id')
+    def get_charts(self, id, **kwargs) -> list():
+        tag = kwargs.get('tag')
         
         with closing(self.connect) as conn:
             with conn.cursor(cursor_factory=DictCursor) as cursor:
-                if tag:
-                    cursor.execute("SELECT * FROM charts WHERE charts.tags @> ARRAY[%s]", (tag, )
-                    )
-                    return ChartSchema().dumps(cursor, many=True)
+                sql = "SELECT * FROM charts"
                 
                 if id:
-                    cursor.execute("SELECT * FROM charts WHERE id=%s", (id, )
-                    )
+                    cursor.execute(sql + " WHERE id=%s", (id, ))
                     return ChartSchema().dumps(cursor, many=True)
-                
-                cursor.execute('SELECT * FROM charts')
+
+                if tag:
+                    sql += " WHERE charts.tags @> ARRAY[%s]"
+                    
+                cursor.execute(sql, (tag,))
                 return ChartSchema().dumps(cursor, many=True)
     
 
@@ -51,11 +50,9 @@ class TodoChart(RequestHandler):
     def get(self, id):
         params = {}
         if 'tag' in self.request.arguments.keys():
-            params = {'tag': self.request.arguments.get('tag')[0].decode('utf8')}
-        if id:
-            params['id'] = id
-            
-        self.write({'results': ChartsClient().get_charts(**params)})
+            params['tag'] = self.request.arguments.get('tag')[0].decode('utf8')
+ 
+        self.write({'results': ChartsClient().get_charts(id, **params)})
         
     def post(self, _):
         items.append(json.loads(self.request.body))
