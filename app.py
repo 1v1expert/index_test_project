@@ -2,7 +2,7 @@ from tornado.web import Application, RequestHandler, HTTPError
 from tornado.ioloop import IOLoop
 import json
 
-from marshmallow import Schema, fields
+from marshmallow import Schema, fields, ValidationError
 
 import psycopg2
 from psycopg2 import sql
@@ -12,11 +12,9 @@ from local_settings import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST
 
 from contextlib import closing
 
-charts = []
-
 
 class ChartSchema(Schema):
-    id = fields.Integer()
+    id = fields.Integer(required=True)
     tags = fields.List(fields.String())
 
 
@@ -25,45 +23,76 @@ class ChartsClient(object):
         self.connect = psycopg2.connect(dbname=DB_NAME, user=DB_USER,
                                         password=DB_PASSWORD, host=DB_HOST)
         # raise connect == None
+    
+    def update_or_insert_chart(self, idd: int, body: dict, update: bool) -> bool:
+        if update:
+            update = sql.SQL('UPDATE charts SET tags={} WHERE id={}').format(sql.Literal(body['tags']), sql.Literal(idd))
+            self.execute(update, need_fetch=False)
+            return True
         
-    def get_charts(self, id, **kwargs) -> list():
-        tag = kwargs.get('tag')
-        
+        insert = sql.SQL('INSERT INTO charts (id, tags) VALUES {}').format(
+            sql.SQL(',').join(map(sql.Literal, [(body['id'], body['tags'])])
+        ))
+        self.execute(insert, need_fetch=False)
+        return True
+
+    def delete(self, idd: int) -> None:
+        delete = sql.SQL('DELETE FROM charts WHERE id={}').format(sql.Literal(idd))
+        self.execute(delete, need_fetch=False)
+
+    def execute(self, sql: sql.Composable,  *args, need_fetch=True):
+        result = None
         with closing(self.connect) as conn:
             with conn.cursor(cursor_factory=DictCursor) as cursor:
-                sql = "SELECT * FROM charts"
-                
-                if id:
-                    cursor.execute(sql + " WHERE id=%s", (id, ))
-                    return ChartSchema().dumps(cursor, many=True)
-
-                if tag:
-                    sql += " WHERE charts.tags @> ARRAY[%s]"
-                    
-                cursor.execute(sql, (tag,))
-                return ChartSchema().dumps(cursor, many=True)
+                conn.autocommit = True
+                cursor.execute(sql, (args,))
+                if need_fetch:
+                    result = cursor.fetchall()
+        return result
     
+    def get_charts(self, idd: int, **kwargs):
+        tag = kwargs.get('tag')
+        
+        get_sql = sql.SQL('SELECT * FROM charts')
+        if tag:
+            tags = ['charts.tags @> ARRAY[\'%s\']' % item for item in tag.split(',')]
+
+        if idd or tag:  # what?? idd primary key! i don't know =(
+            get_sql += sql.SQL(' WHERE ')
+            if idd:
+                get_sql += sql.SQL('id=%s' % idd) if not tag else sql.SQL(' id=%s and (%s)' % (idd, ' or '.join(tags)))
+            else:
+                get_sql += sql.SQL(' or '.join(tags))
+        return ChartSchema().dumps(self.execute(get_sql), many=True)
+
 
 class TodoChart(RequestHandler):
     # def initialize(self, database):
     #     self.database = database
-    def get(self, id):
+    def get(self, idd: int):
+        """ get chart or charts """
         params = {}
         if 'tag' in self.request.arguments.keys():
             params['tag'] = self.request.arguments.get('tag')[0].decode('utf8')
- 
-        self.write({'results': ChartsClient().get_charts(id, **params)})
         
-    def post(self, _):
-        items.append(json.loads(self.request.body))
-        self.write({'message': 'new chart added'})
-        # raise HTTPError(405)
+        self.write({'results': json.loads(ChartsClient().get_charts(idd, **params))})
     
-    def delete(self, id):
-        global items
-        new_items = [item for item in items if item['id'] is not int(id)]
-        items = new_items
-        self.write({'message': 'Item with id %s was deleted' % id})
+    def post(self, idd: int):
+        """ insert or update charts """
+        try:
+            body = ChartSchema().loads(self.request.body)  # deserializing Objects
+        except ValidationError as err:
+            raise HTTPError(400, str(err.messages))
+        except json.JSONDecodeError:
+            raise HTTPError(500, 'json decode error')
+        
+        if ChartsClient().update_or_insert_chart(idd, body, update=True if idd else False):
+            self.write({'message': 'update/insert with id {}: OK'.format(idd)})
+        else: raise HTTPError(500)
+
+    def delete(self, idd: int):
+        ChartsClient().delete(idd)
+        self.write({'message': 'Chart with id %s was deleted' % idd})
 
 
 def make_app():

@@ -7,14 +7,13 @@ from local_settings import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST
 from app import ChartSchema
 
 with closing(psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, host=DB_HOST)) as conn:
-    # create table
-    with conn.cursor() as cursor:
+    
+    with conn.cursor(cursor_factory=DictCursor) as cursor:
         conn.autocommit = True
-        cursor.execute('CREATE TABLE charts (id SERIAL PRIMARY KEY, tags text ARRAY)')
 
-    # insert test data
-    with conn.cursor() as cursor:
-        conn.autocommit = True
+        # create table
+        cursor.execute('CREATE TABLE charts (id SERIAL PRIMARY KEY NOT NULL, tags text ARRAY)')
+
         values = [
             ('100100', "{tesla, mask, ev}"),
             ('100101', "{moscow, product}"),
@@ -25,15 +24,16 @@ with closing(psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD
         insert = sql.SQL('INSERT INTO charts (id, tags) VALUES {}').format(
             sql.SQL(',').join(map(sql.Literal, values))
         )
+        # insert test data
         cursor.execute(insert)
 
-    # create index
-    with conn.cursor() as cursor:
-        conn.autocommit = True
+        # create index
         cursor.execute('CREATE INDEX ON charts using gin(tags)')
-    
-    # get query
-    with conn.cursor(cursor_factory=DictCursor) as cursor:
+
+        # disable seqscan
+        cursor.execute('SET enable_seqscan TO off')
+        
+        # get query from charts
         cursor.execute('SELECT * FROM charts')
         chart = ChartSchema().dumps(cursor, many=True)
         print(chart)
