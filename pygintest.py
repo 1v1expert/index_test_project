@@ -1,4 +1,4 @@
-from tornado.web import Application, RequestHandler, HTTPError
+from tornado.web import Application, RequestHandler, HTTPError, url
 from tornado.ioloop import IOLoop
 import json
 
@@ -66,6 +66,12 @@ class ChartsClient(object):
         return ChartSchema().dumps(self.execute(get_sql), many=True)
 
 
+class InfoProject(RequestHandler):
+    def get(self):
+        self.write('<a href="%s">link to charts</a>' %
+                   self.reverse_url("chart", ''))
+
+
 class TodoChart(RequestHandler):
     # def initialize(self, database):
     #     self.database = database
@@ -96,12 +102,10 @@ class TodoChart(RequestHandler):
 
 
 def make_app():
-    
-    urls = [
-        # ("/", TodoCharts),
-        (r"/api/chart/([^/]+)?", TodoChart)
-    ]
-    return Application(urls, debug=True)
+    return Application([
+        url("/", InfoProject),
+        url(r"/api/chart/([^/]+)?", TodoChart, name='chart')
+    ], debug=True)
 
 
 if __name__ == '__main__':
