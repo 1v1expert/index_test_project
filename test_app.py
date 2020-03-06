@@ -28,31 +28,31 @@ class TestChart(AsyncHTTPTestCase):
     def test_get_chart(self):
         pass
         
-    def test_insert(self):
+    def test_full(self):
         import json
         post_body = {"id": self.id, "tags": ["tag1", "tag2"]}
         
         # test insert chart
         insert_chart = self.fetch("/api/chart/", method="POST", body=json.dumps(post_body))
         self.assertEqual(insert_chart.code, 200)
-        self.assertIn('OK', str(insert_chart.body))
+        self.assertIn('Chart was insert', str(insert_chart.body))
         
         # test get chart
         get_chart = self.fetch("/api/chart/{}".format(self.id))
         self.assertEqual(get_chart.code, 200)
-        self.assertDictEqual({'results': [post_body]}, json.loads(get_chart.body))#ChartSchema().load(str(response.body)))
+        self.assertDictEqual(post_body, ChartSchema().loads(json.loads(get_chart.body)['results'], many=True)[0])
         
         # test update chart
         update_body = post_body
         update_body["tags"] = ["tag3", "tag4", "tag5"]
         update_chart = self.fetch("/api/chart/{}".format(self.id), method="POST", body=json.dumps(update_body))
         self.assertEqual(update_chart.code, 200)
+        self.assertIn('Chart with id {} was update'.format(self.id), str(update_chart.body))
         
         # test get update body chart
         get_update_chart = self.fetch("/api/chart/{}".format(self.id))
         self.assertEqual(get_update_chart.code, 200)
-        self.assertDictEqual({'results': [update_body]}, json.loads(get_update_chart.body))
-        self.assertIn('OK', str(insert_chart.body))
+        self.assertDictEqual(update_body, ChartSchema().loads(json.loads(get_update_chart.body)['results'], many=True)[0])
         
         # test delete chart
         delete_chart = self.fetch("/api/chart/{}".format(self.id), method="DELETE")
